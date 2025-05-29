@@ -107,9 +107,12 @@ for update in data.get("result", []):
         continue
 
     if not (photos or video or document):
-        print(
-            f"[IGNORED] no foto or video or document, message '{text}' from '{sender}'"
-        )
+        if text == "/start":
+            print(f"[START] Sending /start message to '{sender}'")
+            send_message(chat_id, "Oie, é só enviar suas fotinhos e vídeos :D")
+            last_processed_update_id = update_id
+        else:
+            print(f"[IGNORED] no media, message '{text}' from '{sender}'")
         continue
 
     print()
