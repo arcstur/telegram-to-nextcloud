@@ -5,6 +5,7 @@ from requests.exceptions import HTTPError
 BOT_API_KEY = os.environ["TELEGRAM_BOT_API_KEY"]
 NEXTCLOUD_BASE_URL = os.environ["NEXTCLOUD_BASE_URL"]
 NEXTCLOUD_SHARE_ID = os.environ["NEXTCLOUD_SHARE_ID"]
+TELEGRAM_USE_OFFSET = os.environ.get("TELEGRAM_USE_OFFSET") == "True"
 
 base_url = f"https://api.telegram.org/bot{BOT_API_KEY}"
 base_file_url = f"https://api.telegram.org/file/bot{BOT_API_KEY}"
@@ -72,15 +73,21 @@ def send_message(chat_id, message):
     res.raise_for_status()
 
 
-res = requests.get(f"{base_url}/getUpdates")
-res.raise_for_status()
-data = res.json()
-
 last_processed_update_id = None
+interacted_chat_ids = set()
 
 if os.path.exists("last_processed_update_id"):
     with open("last_processed_update_id", "r") as f:
         last_processed_update_id = int(f.read())
+
+offset = None
+if TELEGRAM_USE_OFFSET:
+    offset = last_processed_update_id + 1 if last_processed_update_id else None
+
+offset_str = f"?offset={offset}" if offset else ""
+res = requests.get(f"{base_url}/getUpdates{offset_str}")
+res.raise_for_status()
+data = res.json()
 
 for update in data.get("result", []):
     update_id = update["update_id"]
@@ -93,13 +100,16 @@ for update in data.get("result", []):
     text = message.get("text")
     photos = message.get("photo")
     video = message.get("video")
+    document = message.get("document")
 
     if last_processed_update_id and update_id <= last_processed_update_id:
         print(f"[IGNORED] update {update_id} already processed, from '{sender}'")
         continue
 
-    if not (photos or video):
-        print(f"[IGNORED] no foto or video, message '{text}' from '{sender}'")
+    if not (photos or video or document):
+        print(
+            f"[IGNORED] no foto or video or document, message '{text}' from '{sender}'"
+        )
         continue
 
     print()
@@ -115,13 +125,23 @@ for update in data.get("result", []):
         file_name = f"{sender}-{date}-{update_id}"
         print(f"[IMAGE] found photo '{file_name}' from '{sender}'")
 
+    if document:
+        file_id = document["file_id"]
+        document_file_name = document["file_name"]
+        file_name = f"{sender}-{date}-{update_id}-{document_file_name}"
+        print(f"[DOCUMENT] found document '{file_name}' from '{sender}'")
+
     print(f"==> Downloading {file_id}...")
     try:
         file_path = get_file_path(file_id)
     except HTTPError:
         print("==> File too large!")
         react_to_message_failure(chat_id, message_id)
-        send_message(chat_id, f"Arquivo '{file_name}' é muito grande para eu lidar com ele :( eu reagi a ele com uma carinha triste")
+        send_message(
+            chat_id,
+            f"Arquivo '{file_name}' é muito grande para eu lidar com ele :( eu reagi a ele com uma carinha triste",
+        )
+        interacted_chat_ids.add(chat_id)
         continue
 
     print(f"==> Downloaded to {file_path}")
@@ -131,6 +151,7 @@ for update in data.get("result", []):
         extension = os.path.splitext(file_path)[-1]
         file_name = f"{file_name}{extension}"
 
+    print("==> Checking...")
     if file_already_uploaded(file_name):
         print("==> Already uploaded!")
     else:
@@ -140,12 +161,23 @@ for update in data.get("result", []):
         if worked:
             print(f"==> File '{file_name}' uploaded! Yay!!")
             send_message(chat_id, f"Arquivo '{file_name}' submetido com sucesso!")
+            interacted_chat_ids.add(chat_id)
         else:
             print("==> File was misteriously not uploaded!")
             react_to_message_failure(chat_id, message_id)
-            send_message(chat_id, f"Arquivo '{file_name}' misteriosamente não foi submetido...")
+            send_message(
+                chat_id,
+                f"Arquivo '{file_name}' misteriosamente não foi submetido...",
+            )
+            interacted_chat_ids.add(chat_id)
 
     last_processed_update_id = update_id
+
+for chat_id in interacted_chat_ids:
+    send_message(
+        chat_id,
+        "Acredito que processei todas as suas mídias. Obrigado por contribuir com os registros da participação do Youth no FIB 15. Caso precise de assistência, mande uma mensagem para @arcstur. Pode enviar mais fotos que, em tempo, irei processá-las novamente. Abraços do bot!",
+    )
 
 with open("last_processed_update_id", "w") as f:
     f.write(str(last_processed_update_id))
