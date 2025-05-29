@@ -118,8 +118,9 @@ for update in data.get("result", []):
     print()
     if video:
         file_id = video["file_id"]
-        video_file_name = video["file_name"]
-        file_name = f"{sender}-{date}-{update_id}-{video_file_name}"
+        video_file_name = video.get("file_name")
+        video_file_name_str = f"-{video_file_name}" if video_file_name else ""
+        file_name = f"{sender}-{date}-{update_id}{video_file_name_str}"
         print(f"[VIDEO] found video '{file_name}' from '{sender}'")
 
     if photos:
@@ -145,6 +146,7 @@ for update in data.get("result", []):
             f"Arquivo '{file_name}' é muito grande para eu lidar com ele :( eu reagi a ele com uma carinha triste",
         )
         interacted_chat_ids.add(chat_id)
+        last_processed_update_id = update_id
         continue
 
     print(f"==> Downloaded to {file_path}")
