@@ -6,7 +6,6 @@ on:
 
 jobs:
   process_updates:
-    name: Check Lag
     runs-on: ubuntu-latest
     env:
       BOT_API_KEY: ${{ secrets.BOT_API_KEY }}
