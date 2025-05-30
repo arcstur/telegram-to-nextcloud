@@ -1,11 +1,12 @@
 import os
 import requests
+from datetime import datetime
 from requests.exceptions import HTTPError
 
-BOT_API_KEY = os.environ["TELEGRAM_BOT_API_KEY"]
+BOT_API_KEY = os.environ["BOT_API_KEY"]
+BOT_LOGS_CHAT_ID = os.environ.get("BOT_LOGS_CHAT_ID")
 NEXTCLOUD_BASE_URL = os.environ["NEXTCLOUD_BASE_URL"]
 NEXTCLOUD_SHARE_ID = os.environ["NEXTCLOUD_SHARE_ID"]
-TELEGRAM_USE_OFFSET = os.environ.get("TELEGRAM_USE_OFFSET") == "True"
 
 base_url = f"https://api.telegram.org/bot{BOT_API_KEY}"
 base_file_url = f"https://api.telegram.org/file/bot{BOT_API_KEY}"
@@ -32,7 +33,7 @@ def download_file(file_path):
 
 
 def react_to_message(chat_id, message_id, emoji):
-    res = requests.post(
+    return requests.post(
         f"{base_url}/setMessageReaction",
         json={
             "chat_id": chat_id,
@@ -45,7 +46,6 @@ def react_to_message(chat_id, message_id, emoji):
             ],
         },
     )
-    res.raise_for_status()
 
 
 def react_to_message_failure(chat_id, message_id):
@@ -73,23 +73,22 @@ def send_message(chat_id, message):
     res.raise_for_status()
 
 
-last_processed_update_id = None
+def log_message(message):
+    now = str(datetime.now())
+    message = f"[{now}] {message}"
+    print(message)
+    if BOT_LOGS_CHAT_ID:
+        send_message(BOT_LOGS_CHAT_ID, message)
+
+
 interacted_chat_ids = set()
 
-if os.path.exists("last_processed_update_id"):
-    with open("last_processed_update_id", "r") as f:
-        last_processed_update_id = int(f.read())
-
-offset = None
-if TELEGRAM_USE_OFFSET:
-    offset = last_processed_update_id + 1 if last_processed_update_id else None
-
-offset_str = f"?offset={offset}" if offset else ""
-res = requests.get(f"{base_url}/getUpdates{offset_str}")
+res = requests.get(f"{base_url}/getUpdates")
 res.raise_for_status()
 data = res.json()
+updates = data.get("result", [])
 
-for update in data.get("result", []):
+for update in updates:
     update_id = update["update_id"]
     message = update["message"]
     message_id = message["message_id"]
@@ -102,81 +101,64 @@ for update in data.get("result", []):
     video = message.get("video")
     document = message.get("document")
 
-    if last_processed_update_id and update_id <= last_processed_update_id:
-        print(f"[IGNORED] update {update_id} already processed, from '{sender}'")
-        continue
-
     if not (photos or video or document):
         if text == "/start":
-            print(f"[START] Sending /start message to '{sender}'")
+            log_message(f"[START] Sending /start message to @{sender}")
             send_message(chat_id, "Oie, é só enviar suas fotinhos e vídeos :D")
-            last_processed_update_id = update_id
         else:
-            print(f"[IGNORED] no media, message '{text}' from '{sender}'")
+            log_message(f"[IGNORED] no media, message '{text}' from @{sender}")
         continue
 
     print()
     if video:
-        file_id = video["file_id"]
-        video_file_name = video.get("file_name")
-        video_file_name_str = f"-{video_file_name}" if video_file_name else ""
-        file_name = f"{sender}-{date}-{update_id}{video_file_name_str}"
-        print(f"[VIDEO] found video '{file_name}' from '{sender}'")
-
+        media = video
     if photos:
-        photo = photos[-1]  # others are resized
-        file_id = photo["file_id"]
-        file_name = f"{sender}-{date}-{update_id}"
-        print(f"[IMAGE] found photo '{file_name}' from '{sender}'")
-
+        media = photos[-1]  # others are resized
     if document:
-        file_id = document["file_id"]
-        document_file_name = document["file_name"]
-        file_name = f"{sender}-{date}-{update_id}-{document_file_name}"
-        print(f"[DOCUMENT] found document '{file_name}' from '{sender}'")
+        media = document
 
-    print(f"==> Downloading {file_id}...")
+    file_id = media["file_id"]
+    media_file_name = media.get("file_name")
+    media_file_name_str = f"-{media_file_name}" if media_file_name else ""
+    file_name = f"{sender}-{date}-{update_id}{media_file_name_str}"
+    log_message(f"[MEDIA] found media '{file_name}' from @{sender}")
+
     try:
         file_path = get_file_path(file_id)
     except HTTPError:
-        print("==> File too large!")
+        log_message("==> File too large!")
         react_to_message_failure(chat_id, message_id)
         send_message(
             chat_id,
-            f"Arquivo '{file_name}' é muito grande para eu lidar com ele :( eu reagi a ele com uma carinha triste",
+            f"Arquivo '{file_name}' é muito grande para eu lidar com ele (>200 MB), eu reagi a ele com uma carinha triste",
         )
         interacted_chat_ids.add(chat_id)
-        last_processed_update_id = update_id
         continue
 
-    print(f"==> Downloaded to {file_path}")
+    log_message(f"==> Downloaded to {file_path}")
     file_content = download_file(file_path)
 
-    if photos:
+    if len(os.path.splitext(file_name)[-1]) == 0:
         extension = os.path.splitext(file_path)[-1]
         file_name = f"{file_name}{extension}"
 
-    print("==> Checking...")
-    if file_already_uploaded(file_name):
-        print("==> Already uploaded!")
-    else:
-        print("==> Uploading...")
+    try:
         upload_file(file_name, file_content)
         worked = file_already_uploaded(file_name)
-        if worked:
-            print(f"==> File '{file_name}' uploaded! Yay!!")
-            send_message(chat_id, f"Arquivo '{file_name}' submetido com sucesso!")
-            interacted_chat_ids.add(chat_id)
-        else:
-            print("==> File was misteriously not uploaded!")
-            react_to_message_failure(chat_id, message_id)
-            send_message(
-                chat_id,
-                f"Arquivo '{file_name}' misteriosamente não foi submetido...",
-            )
-            interacted_chat_ids.add(chat_id)
-
-    last_processed_update_id = update_id
+    except (HTTPError, Exception):
+        worked = False
+    if worked:
+        log_message(f"==> File '{file_name}' uploaded! Yay!!")
+        send_message(chat_id, f"Arquivo '{file_name}' submetido com sucesso!")
+        interacted_chat_ids.add(chat_id)
+    else:
+        log_message("==> File was misteriously not uploaded!")
+        react_to_message_failure(chat_id, message_id)
+        send_message(
+            chat_id,
+            f"Arquivo '{file_name}' misteriosamente não foi submetido...",
+        )
+        interacted_chat_ids.add(chat_id)
 
 for chat_id in interacted_chat_ids:
     send_message(
@@ -184,5 +166,9 @@ for chat_id in interacted_chat_ids:
         "Acredito que processei todas as suas mídias. Obrigado por contribuir com os registros da participação do Youth no FIB 15. Caso precise de assistência, mande uma mensagem para @arcstur. Pode enviar mais fotos que, em tempo, irei processá-las novamente. Abraços do bot!",
     )
 
-with open("last_processed_update_id", "w") as f:
-    f.write(str(last_processed_update_id))
+if len(updates) > 0:
+    last_update_id = updates[-1]["update_id"]
+    offset = last_update_id + 1
+    res = requests.get(f"{base_url}/getUpdates?offset={offset}")
+    res.raise_for_status()
+    log_message(f"Finished up to update_id {update_id}")
