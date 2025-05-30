@@ -1,7 +1,7 @@
 name: Process updates
 on:
   schedule:
-    - cron: "*/15 7-23 * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 jobs:
