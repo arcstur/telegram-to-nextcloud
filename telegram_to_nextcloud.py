@@ -130,7 +130,7 @@ for update in updates:
         react_to_message_failure(chat_id, message_id)
         send_message(
             chat_id,
-            f"Arquivo '{file_name}' é muito grande para eu lidar com ele (>200 MB), eu reagi a ele com uma carinha triste",
+            f"Arquivo '{file_name}' é muito grande para eu lidar com ele, e reagi a ele com uma carinha triste",
         )
         interacted_chat_ids.add(chat_id)
         continue
