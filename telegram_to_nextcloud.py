@@ -166,7 +166,7 @@ for update in updates:
 for chat_id in interacted_chat_ids:
     send_message(
         chat_id,
-        "Acredito que processei todas as suas mídias. Obrigado por contribuir com os registros da participação do Youth no FIB 15. Caso precise de assistência, mande uma mensagem para @arcstur. Pode enviar mais fotos que, em tempo, irei processá-las novamente. Abraços do bot!",
+        f"Acredito que processei todas as suas mídias. Obrigado por contribuir com os registros da participação do Youth no FIB 15. Caso precise de assistência, mande uma mensagem para @arcstur. Pode enviar mais fotos que, em tempo, irei processá-las novamente. Encontre as nossas mídias do Youth no FIB15 em <{NEXTCLOUD_BASE_URL}/s/{NEXTCLOUD_SHARE_ID}>. Abraços do bot!",
     )
 
 if len(updates) > 0:
