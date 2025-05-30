@@ -1,0 +1,24 @@
+name: Process updates
+on:
+  schedule:
+    - cron: "*/15 7-23 * * *"
+  workflow_dispatch:
+
+jobs:
+  process_updates:
+    name: Check Lag
+    runs-on: ubuntu-latest
+    env:
+      BOT_API_KEY: ${{ secrets.BOT_API_KEY }}
+      BOT_LOGS_CHAT_ID: ${{ secrets.BOT_LOGS_CHAT_ID }}
+      NEXTCLOUD_SHARE_ID: ${{ secrets.NEXTCLOUD_SHARE_ID }}
+      NEXTCLOUD_BASE_URL: ${{ secrets.NEXTCLOUD_BASE_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install requests
+      - run: python3 telegram_to_nextcloud.py
