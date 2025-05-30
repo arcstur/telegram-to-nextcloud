@@ -121,7 +121,7 @@ for update in updates:
     media_file_name = media.get("file_name")
     media_file_name_str = f"-{media_file_name}" if media_file_name else ""
     file_name = f"{sender}-{date}-{update_id}{media_file_name_str}"
-    log_message(f"[MEDIA] found media '{file_name}' from @{sender}")
+    log_message(f"[MEDIA] found media '{file_id}' from @{sender}")
 
     try:
         file_path = get_file_path(file_id)
