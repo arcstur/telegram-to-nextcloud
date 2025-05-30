@@ -93,7 +93,10 @@ for update in updates:
     message = update["message"]
     message_id = message["message_id"]
     date = message["date"]
-    sender = message["from"]["username"]
+    if "username" in message["from"]:
+        sender = message["from"]["username"]
+    else:
+        sender = message["from"].get("first_name", "Anônimo")
     chat_id = message["chat"]["id"]
     chat_type = message["chat"]["type"]
     text = message.get("text")
